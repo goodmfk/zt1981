@@ -1,0 +1,49 @@
+name: Release Dev
+on:
+  push:
+    branches:
+      - main
+concurrency:
+  group: release-dev
+  cancel-in-progress: true
+jobs:
+  docker-build:
+    if: |
+      !startsWith(github.ref_name, 'release/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Get version from package.json
+        id: package-version
+        uses: martinbeentjes/npm-get-version-action@v1.3.1
+
+      - name: Get SHA for current commit
+        id: short-sha
+        uses: benjlevesque/short-sha@v3.0
+        with:
+          length: 6
+
+      - name: Save filenames to output
+        id: config
+        run: |
+          echo "version=${{ steps.package-version.outputs.current-version}}-dev${{ steps.short-sha.outputs.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Update package.json version
+        run: npm version ${{ steps.config.outputs.version }} --no-git-tag-version
+
+      - name: Docker login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            idealteamdocker/wms:${{ steps.config.outputs.version }}
+            idealteamdocker/wms:latest
